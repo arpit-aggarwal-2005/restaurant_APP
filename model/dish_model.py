@@ -7,7 +7,7 @@ class dish_model():
             self.con = mysql.connector.connect(
                 host="localhost",
                 user="root",
-                password="BROKEN_devil2005",
+                password="ARPIT@#aggarwal2005",
                 database="restaurant_db"
             )
             self.con.autocommit = True

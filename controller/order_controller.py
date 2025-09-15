@@ -23,13 +23,13 @@ def get_order_by_id(order_id):
 
 @app.route("/orders/customer/<customer_id>", methods=["GET"])
 def get_orders_by_customer(customer_id):
-    return orders.get_orders_by_customer(customer_id)
+    return orders.get_order_by_cid(customer_id)
 
 
 @app.route("/orders/restaurant/<int:restaurant_id>", methods=["GET"])
 def get_orders_by_restaurant_controller(restaurant_id):
 
-    return orders.get_orders_by_restaurant(restaurant_id)
+    return orders.get_order_by_rid(restaurant_id)
 
 @app.route('/orders/bulk', methods=['POST'])
 def create_bulk_orders():
@@ -38,3 +38,4 @@ def create_bulk_orders():
     return orders.bulk_place_orders(orderss)
 
 
+#restaurant_APP

@@ -1,5 +1,5 @@
 import mysql.connector
-from flask import *
+from flask import jsonify,make_response,request
 from datetime import datetime, timedelta
 import jwt
 
@@ -9,7 +9,7 @@ class customer_model():
             self.con = mysql.connector.connect(
                 host="localhost",
                 user="root",
-                password="BROKEN_devil2005",
+                password="ARPIT@#aggarwal2005",
                 database="restaurant_db"
             )
             self.con.autocommit = True
@@ -24,14 +24,14 @@ class customer_model():
             data.get("name"),
             data.get("email"),
             data.get("phone"),
-            data.get("password")  # In production, hash it with bcrypt
+            data.get("password")  
         )
         self.cur.execute(query, values)
         return make_response({"message": "Customer created successfully"}, 201)
 
     def customer_login_model(self, data):
         query = f"""
-            SELECT id, name, email, phone, avatar, taste_history
+            SELECT id, name, email, phone, avatar
             FROM customers
             WHERE email = '{data['email']}' AND password = '{data['password']}'
         """

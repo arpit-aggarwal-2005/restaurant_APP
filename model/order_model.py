@@ -9,7 +9,7 @@ class order_model():
             self.con = mysql.connector.connect(
                 host="localhost",
                 user="root",
-                password="BROKEN_devil2005",
+                password="ARPIT@#aggarwal2005",
                 database="restaurant_db"
             )
             self.con.autocommit = True
@@ -20,47 +20,55 @@ class order_model():
 
     def place_order(self, customer_id, rid, data):
         try:
-            dishes = data.get("dishes")
-            if not dishes:
-                return make_response({"message": "Missing dish list"}, 400)
+            dishes = data.get("dishIDs")
+            quantity = data.get("quantity")
 
-            dish_ids = [item["id"] for item in dishes]
-            quantities = {item["id"]: item["quantity"] for item in dishes}
+            if not dishes or not quantity or len(dishes) != len(quantity):
+                return make_response({"error": "Invalid order data"}, 400)
 
-            # Fetch dish prices
-            format_strings = ','.join(['%s'] * len(dish_ids))
-            self.cur.execute(f"SELECT id, price FROM dishes WHERE id IN ({format_strings})", tuple(dish_ids))
+            # Map dish IDs to their corresponding quantities
+            quantities = {dishes[i]: quantity[i] for i in range(len(dishes))}
+
+            # Use parameterized query for IN clause
+            format_strings = ','.join(['%s'] * len(dishes))
+
+            self.cur.execute(
+                f"SELECT id, price FROM dishes WHERE id IN ({format_strings})",
+                tuple(dishes)
+            )
             result = self.cur.fetchall()
 
-            if len(result) != len(dish_ids):
-                return make_response({"message": "Some dishes not found"}, 400)
+            if len(result) != len(dishes):
+                return make_response({"error": "Some dishes not found"}, 400)
 
-            # Calculate total
+            # Calculate total amount
             total_amount = 0
             for row in result:
                 dish_id = row["id"]
                 price = row["price"]
-                qty = quantities.get(dish_id, 1)
+                qty = quantities[dish_id]
                 total_amount += price * qty
 
             ordered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # Save order as JSON (dish_id and qty)
-            order_json = json.dumps(dishes)
-
+            # Insert into orders table
             self.cur.execute("""
-                INSERT INTO orders (customer_id, rid, dish_ids, total_amount, ordered_at)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                customer_id,
-                rid,
-                order_json,
-                total_amount,
-                ordered_at
-            ))
+                INSERT INTO orders (customer_id, rid, total_amount, ordered_at)
+                VALUES (%s, %s, %s, %s)
+            """, (customer_id, rid, total_amount, ordered_at))
+            
+            order_id = self.cur.lastrowid
+
+            # Insert into order_dishes table
+            for i in range(len(dishes)):
+                self.cur.execute("""
+                    INSERT INTO order_dishes (dish_ids, orderid, quantity)
+                    VALUES (%s, %s, %s)
+                """, (dishes[i], order_id, quantity[i]))
 
             return make_response({
                 "message": "Order placed successfully",
+                "order_id": order_id,
                 "total_amount": total_amount
             }, 201)
 
@@ -69,86 +77,74 @@ class order_model():
 
     def get_order_by_id(self, order_id):
         order_id = int(order_id)
+        print(order_id)
+        print()
         self.cur.execute(f"SELECT * FROM orders WHERE id = {order_id}")
         result = self.cur.fetchone()
+        self.cur.execute(f"SELECT dish_ids AS DISH , quantity FROM order_dishes WHERE orderid = {order_id}")
+        result2 = self.cur.fetchall()
         if self.cur.rowcount>0:
-            return make_response({"payload": result}, 200)
+            return make_response({"payload": result,
+                                  "dishes":result2}, 200)
         return make_response({"message": "Order not found"}, 404)
 
-    def get_orders_by_customer(self, customer_id):
-        customer_id = int(customer_id)
-        self.cur.execute(f"SELECT * FROM orders WHERE customer_id = {customer_id}")
-        result = self.cur.fetchall()
-        if self.cur.rowcount>0:
-            return make_response({"payload": result}, 200)
-        return make_response({"message": "No orders found"}, 204)
-    def get_orders_by_restaurant(self,rid):
-        self.cur.execute(f"SELECT * FROM orders WHERE rid = {rid}")
-        result = self.cur.fetchall()
-        if self.cur.rowcount>0:
-            return jsonify(result)
-    def bulk_place_orders(self, orders_list):
+    def get_order_by_cid(self, cid):
         try:
-            results = []
+            cid = int(cid)
 
-            for order_data in orders_list:
-                customer_id = order_data["customer_id"]
-                rid = order_data["restaurant_id"]
-                dishes = order_data.get("dishes")
+            # Get all orders of the customer
+            self.cur.execute("SELECT * FROM orders WHERE customer_id = %s", (cid,))
+            orders = self.cur.fetchall()
 
-                if not dishes:
-                    results.append({"customer_id": customer_id, "status": "error", "message": "Missing dish list"})
-                    continue
+            if not orders:
+                return make_response({"message": "No orders found for this customer"}, 404)
 
-                dish_ids = [item["id"] for item in dishes]
-                quantities = {item["id"]: item["quantity"] for item in dishes}
+            all_data = []
 
-                # Prepare format string for SQL IN clause
-                format_strings = ','.join(['%s'] * len(dish_ids))
-                self.cur.execute(
-                    f"SELECT id, price FROM dishes WHERE id IN ({format_strings})", tuple(dish_ids)
-                )
-                result = self.cur.fetchall()
+            for order in orders:
+                # Get dishes for the current order
+                self.cur.execute("SELECT dish_ids, quantity FROM order_dishes WHERE orderid = %s", (order['id'],))
+                dishes = self.cur.fetchall()
 
-                if len(result) != len(dish_ids):
-                    results.append({
-                        "customer_id": customer_id,
-                        "status": "error",
-                        "message": "Some dish IDs not found"
-                    })
-                    continue
-
-                # Calculate total
-                total_amount = 0
-                for row in result:
-                    dish_id = row["id"]
-                    price = row["price"]
-                    qty = quantities.get(dish_id, 1)
-                    total_amount += price * qty
-
-                ordered_at = order_data.get("timestamp")
-                if not ordered_at:
-                    ordered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                order_json = json.dumps(dishes)
-
-                # Insert order
-                self.cur.execute("""
-                    INSERT INTO orders (customer_id, rid, dish_ids, total_amount, ordered_at)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (customer_id, rid, order_json, total_amount, ordered_at))
-
-                results.append({
-                    "customer_id": customer_id,
-                    "status": "success",
-                    "total_amount": total_amount
+                all_data.append({
+                    "dishes": dishes,
+                    "order": order
+                    
                 })
 
-            
-            return make_response(results, 201)
+            return make_response({"orders": all_data}, 200)
 
         except Exception as e:
-            
-            return make_response({"message": "Bulk insert failed", "error": str(e)}, 500)
+            return make_response({"error": str(e)}, 500)
 
-        
+
+
+
+    def get_order_by_rid(self, cid):
+        try:
+            cid = int(cid)
+
+            # Get all orders of the customer
+            self.cur.execute("SELECT * FROM orders WHERE rid = %s", (cid,))
+            orders = self.cur.fetchall()
+
+            if not orders:
+                return make_response({"message": "No orders found for this customer"}, 404)
+
+            all_data = []
+
+            for order in orders:
+                # Get dishes for the current order
+                self.cur.execute("SELECT dish_ids, quantity FROM order_dishes WHERE orderid = %s", (order['id'],))
+                dishes = self.cur.fetchall()
+
+                all_data.append({
+                    "dishes": dishes,
+                    "order": order
+                    
+                })
+
+            return make_response({"orders": all_data}, 200)
+
+        except Exception as e:
+            return make_response({"error": str(e)}, 500)

@@ -8,7 +8,7 @@ class FeedbackModel:
             self.con = mysql.connector.connect(
                 host="localhost",
                 user="root",
-                password="BROKEN_devil2005",
+                password="ARPIT@#aggarwal2005",
                 database="restaurant_db"
             )
             self.con.autocommit = True
@@ -63,7 +63,7 @@ class FeedbackModel:
 
             # Update restaurant rating
             self.cur.execute("""
-                SELECT AVG((taste_rating + service_rating)/2) AS avg_res_rating
+                SELECT AVG((rating + service_rating)/2) AS avg_res_rating
                 FROM feedback
                 WHERE restaurant_id = %s
             """, (restaurant_id,))
